@@ -78,4 +78,10 @@ $enable_cache = true;
 $cache_server = "dns-or-ip-of-memcached-server";
 ~~~~
 
-!(front)[]
+![ds](./photos/1.jpg)
+
+![ds](./photos/2.jpg)
+
+![ds](./photos/3.jpg)
+
+![ds](./photos/4.jpg)
