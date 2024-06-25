@@ -5,7 +5,9 @@
  *
  */
 
-include("config.php");
+global $db_hostname, $db_port, $db_database, $db_username, $db_password, $latency, $storage_option, $enable_cache, $hd_folder, $cache_server;
+include("./config.php");
+
 session_start();
 $server   = $_SERVER['SERVER_ADDR'];
 $db = open_db_connection($db_hostname, $db_port, $db_database, $db_username, $db_password);
@@ -16,7 +18,7 @@ sleep($latency);
 if (isset($_POST['username'])) 
 {
 	// This is a login request
-	process_login($_POST['username']);
+	process_login($db, $_POST['username'], $_POST['password']);
 }
 
 if (isset($_GET['logout']))
@@ -29,8 +31,9 @@ if (isset($_FILES["fileToUpload"]) && isset($_SESSION['username']))
 {
 	// Check file type before processing
 	$file_temp = "/tmp/".basename($_FILES["fileToUpload"]["name"]);
-	$file_type = strtolower(pathinfo($file_temp, PATHINFO_EXTENSION));
-	if(($file_type != "jpg") && ($file_type != "png") && ($file_type != "jpeg") && ($file_type != "gif") ) 
+	$p = explode('/', $_FILES["fileToUpload"]['type']);
+	$file_type = strtolower($p[1]);
+	if(($file_type != "jpg") && ($file_type != "png") && ($file_type != "jpeg") && ($file_type != "gif") )
 	{
 		// Not an image file, ignore the upload request
 	}
@@ -38,28 +41,41 @@ if (isset($_FILES["fileToUpload"]) && isset($_SESSION['username']))
 	{
 		$username = $_SESSION['username'];
 		// This is an image upload request, save the file first
-		if ($storage_option == "hd")
-		{
-			// In config.php, we specify the storage option as "hd"
-			$key = save_upload_to_hd($_FILES["fileToUpload"], $hd_folder);
-			add_upload_info($db, $username, $key);
-		}
+		// In config.php, we specify the storage option as "hd"
+		$key = save_upload_to_hd($_FILES["fileToUpload"], $hd_folder);
 
-		if ($enable_cache)
-		{
-			// Delete the cached record, the user will query the database to 
-			// get an updated version
-			$mem = open_memcache_connection($cache_server);
-			$mem->delete("front_page");
-		}
+		add_upload_info($db, $username, $key, $_POST['name'], $_POST['writer'], $_POST['age']);
+
 	}
 }
 
-
-function process_login($username)
+function getAuthUser($db, $username, $password)
 {
-	// Simply write username to session data
-	$_SESSION['username'] = $username;
+	$sql = "SELECT * FROM `users` WHERE `username`=? LIMIT 1";
+	$statement = $db->prepare($sql);
+	try {
+		$statement->execute(array($username));
+	} catch (PDOException $e) {
+		var_dump("Error: " . $e->getMessage());
+	}
+	if(password_verify($password, $statement->fetchAll()[0]['password']))
+	{
+			return True;
+	}
+	return false;
+}
+
+function process_login($db, $username, $password)
+{
+//	var_dump(getAuthUser($db, $username, $password));
+	if(getAuthUser($db, $username, $password)){
+		// Simply write username to session data
+		$_SESSION['username'] = $username;
+	}
+	else {
+		var_dump('login falided!');
+	}
+
 }
 
 function process_logout()
@@ -81,30 +97,34 @@ function process_logout()
 
 function save_upload_to_hd($uploadedFile, $folder)
 {
-	// Rename the target file with a UUID
-	$ext = pathinfo($uploadedFile["name"], PATHINFO_EXTENSION);
-	$uuid = uniqid();
-	$key = $uuid.".".$ext;
+    // Rename the target file with a UUID
+    $ext = pathinfo($uploadedFile["name"], PATHINFO_EXTENSION);
+    $uuid = uniqid();
+    $key = $uuid.".".$ext;
 
-	// Copy the upload file to the target file
-	$tgtFile  = $folder."/".$key;	
-	move_uploaded_file($uploadedFile["tmp_name"], $tgtFile);
-	return $key;
+    // Copy the upload file to the target file
+    $tgtFile  = $folder."/".$key;
+    copy($_FILES["fileToUpload"]["tmp_name"], $tgtFile);
+    return $key;
 }
 
 function open_db_connection($hostname, $port, $database, $username, $password)
 {
 	// Open a connection to the database
-	$db = new PDO("mysql:host=$hostname;port=$port;dbname=$database;charset=utf8", $username, $password);
-	return $db;
+	return new PDO("mysql:host=$hostname;port=$port;dbname=$database;charset=utf8", $username, $password);
 }
 
-function add_upload_info($db, $username, $filename)
+function add_upload_info($db, $username, $filename, $name, $writer, $age)
 {
 	// Add a new record to the upload_images table
-	$sql = "INSERT INTO upload_images (username, filename) VALUES (?, ?)";	
+	$sql = "INSERT INTO upload_images (username, filename, name, writer, age) VALUES (?, ?, ?, ?, ?)";
 	$statement = $db->prepare($sql);
-	$statement->execute(array($username, $filename));
+	try {
+		$statement->execute(array($username, $filename,  $name, $writer, $age));
+	} catch (PDOException $e) {
+		var_dump("Error: " . $e->getMessage());
+	}
+
 }
 
 function retrieve_recent_uploads($db, $count)
@@ -116,8 +136,7 @@ function retrieve_recent_uploads($db, $count)
 	$sql = "SELECT * FROM upload_images ORDER BY timeline DESC LIMIT $count";
 	$statement = $db->prepare($sql);
 	$statement->execute();
-	$rows = $statement->fetchAll(PDO::FETCH_ASSOC);
-	return $rows;
+	return $statement->fetchAll(PDO::FETCH_ASSOC);
 }
 
 function open_memcache_connection($hostname)
@@ -143,9 +162,9 @@ echo "<head>";
 echo "<META http-equiv='Content-Type' content='text/html; charset=UTF-8'>";
 echo "<title>Scalable Web Application</title>";
 echo "<script src='demo.js'></script>";
+echo "<link href='s.css' rel='stylesheet'>";
 echo "</head>";
-echo "<body>";
-
+echo "<body id='background-container'>";
 if (isset($_SESSION['username']))
 {
 	$username = $_SESSION['username'];
@@ -161,12 +180,12 @@ if (isset($_SESSION['username']))
 	echo "</table>";
 	echo "<HR>";
 
-	echo "In this demo, we assume that you are uploading images files with file extensions such as JPG, JPEG, GIF, PNG.<br>&nbsp;<br>";
+	echo "we assume that you are uploading images files with file extensions such as JPG, JPEG, GIF, PNG.<br>&nbsp;<br>";
 
-	echo "<form action='index.php' method='post' enctype='multipart/form-data'>";
-	echo "<input type='file' id='fileToUpload' name='fileToUpload' id='fileToUpload' onchange='check_file_type();'>";
-	echo "<input type='submit' value='Upload Image' id='submit_button' name='submit_button' disabled>";
-	echo "</form>";
+    echo "<button onclick='location.href=`insert.php`'>ثبت کتاب</button>";
+    echo '<br>';
+    echo '<br>';
+    echo '<br>';
 
 }
 else
@@ -176,15 +195,12 @@ else
 	echo "<tr>";
 		echo "<td><H1>$server</H1></td>";
 		echo "<td align='right'>";
-			echo "<form action='index.php' method='post'>";
-			echo "Enter Your Name: <br>";
-			echo "<input type='text' id='username' name ='username' size=20><br>";
-			echo "<input type='submit' value='login'/>";
-			echo "</form>";
-		echo "</td>";
-	echo "</tr>";
-	echo "</table>";
-	echo "<HR>";
+            echo "<button onclick='location.href=`login.php`'>Login</button>";
+			echo "<button onclick='location.href=`register.php`'>SignUp</button>";
+			echo "</td>";
+			echo "</tr>";
+			echo "</table>";
+			echo "<HR>";
 }
 
 // Get the most recent N images
@@ -207,29 +223,45 @@ else
 	$images = retrieve_recent_uploads($db, 10);
 }
 
+$session_id = session_id();
+
 // Display the images
 echo "<br>&nbsp;<br>";
+echo "<div style='
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    /* gap: 10px; */
+    justify-items: center;
+'>";
 if ($storage_option == "hd")
 {
 	// Images are on hard disk
 	foreach ($images as $image)
 	{
+        echo "<div>";
 		$filename = $image["filename"];
 		$url = "uploads/".$filename;
 		echo "<img src='$url' width=200px height=150px>&nbsp;&nbsp;";
+        echo "<br>";
+        echo 'نام کتاب: '.$image["name"];
+        echo "<br>";
+        echo 'نام نویسنده کتاب: '.$image["writer"];
+        echo "<br>";
+        echo 'سال چاپ کتاب: '.$image["age"];
+        echo "<br>";
+        echo 'زمان ثبت کتاب: '.$image["timeline"];
+        echo "<br>";
+        if (isset($_SESSION['username'])){
+		?>
+		<button onclick='location.href="delete.php?filename=<?php echo $filename ?>"'>delete</button>
+		<?php
+        }
+        echo "</div>";
 	}
 }
-else if ($storage_option == "s3")
-{
-	// Images are on S3
-	foreach ($images as $image)
-	{
-		$filename = $image["filename"];
-		$url = $s3_baseurl.$s3_bucket."/".$filename;
-		echo "<img src='$url' width=200px height=150px>&nbsp;&nbsp;";
-	}
-}
-$session_id = session_id();
+echo "</div>";
+
+
 echo "<hr>";
 echo "Session ID: ".$session_id;
 echo "</body>";
