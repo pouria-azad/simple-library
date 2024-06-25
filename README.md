@@ -1,4 +1,4 @@
-# Simple LAMP Web Application
+# Simple Library Web Application
 
 If you are using Ubuntu 14.04, install the following software:
 
@@ -24,24 +24,24 @@ Then we clone the source code from git repository. Here we assume that you are u
 $ cd /var
 $ sudo chown -R ubuntu:ubuntu www
 $ cd /var/www/html
-$ git clone https://github.com/qyjohn/simple-lamp
+$ git clone https://github.com/qyjohn/simple-library
 ~~~~
 
 Then we create a MySQL database and a MySQL user for our demo. Here we use “web_demo” as the database name, and “username” as the MySQL user.
 
 ~~~~
 $ mysql -u root -p
-mysql> CREATE DATABASE simple_lamp;
+mysql> CREATE DATABASE simple_library;
 mysql> CREATE USER 'username'@'localhost' IDENTIFIED BY 'password';
-mysql> GRANT ALL PRIVILEGES ON simple_lamp.* TO 'username'@'localhost';
+mysql> GRANT ALL PRIVILEGES ON simple_library.* TO 'username'@'localhost';
 mysql> quit
 ~~~~
 
 In the code you clone from Github, we have pre-populated some demo data as examples. We use the following command to import the demo data in web_demo.sql to the web_demo database:
 
 ~~~~
-$ cd /var/www/html/simple-lamp
-$ mysql -u username -p simple_lamp < simple_lamp.sql
+$ cd /var/www/html/simple-library
+$ mysql -u username -p simple_library < simple_library.sql
 ~~~~
 
 Before we can make it work, there are some minor modifications needed:
@@ -51,11 +51,11 @@ Before we can make it work, there are some minor modifications needed:
 (2) Change the ownership of folder “uploads” to “www-data” so that Apache can upload files to this folder.
 
 ~~~~
-$cd /var/www/html/simple-lamp
+$cd /var/www/html/simple-library
 $ sudo chown -R www-data:www-data uploads
 ~~~~
 
-In your browser, browse to http://ip-address/simple-lamp/index.php. You should see that our application is now working. 
+In your browser, browse to http://ip-address/simple-library/index.php. You should see that our application is now working. 
 
 To enable session sharing using MemCached, edit /etc/php5/apache2/php.ini (Ubuntu 14.04) or /etc/php/7.0/apache2/php.ini (Ubuntu 16.04), with the following modifications:
 
