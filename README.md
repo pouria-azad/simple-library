@@ -78,3 +78,4 @@ $enable_cache = true;
 $cache_server = "dns-or-ip-of-memcached-server";
 ~~~~
 
+!(front)[]
